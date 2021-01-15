@@ -1,9 +1,7 @@
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.FileWriter;
+import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.*;
@@ -11,19 +9,27 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
 public class Main {
+    // При необходимости указать полный путь к файлу: пробовал на win - в таком виде ругается,
+    // а при указании полного пути - норм
     private final static String archName = "source_archive.zip";
 
     public static void main(String[] args) {
-        List<String> fileNames = readArchive();
+        List<String> fileNames = readArchive(archName);
         Map<String, List<Integer>> outputDate = readFiles(fileNames);
-        processingResult(outputDate);
+        String finalReport1 = generateReport1(outputDate);
+        String finalReport2 = generateReport2(outputDate);
+        String finalReport3 = generateReport3(outputDate);
+        System.out.println("------");
+        saveResult(finalReport1, 1);
+        saveResult(finalReport2, 2);
+        saveResult(finalReport3, 3);
     }
 
     /**
      * Метод readArchive()
      * Читаем файлы из архива
      */
-    public static List<String> readArchive() {
+    static List<String> readArchive(String archName) {
         List<String> fileNames = new ArrayList<>();
         System.out.println("------");
         System.out.println("Извлекаем файлы из архива:");
@@ -55,9 +61,9 @@ public class Main {
 
     /**
      * Метод readFiles(List<String> fileNames)
-     * Читаем данные из файлов, сводим в один мап
+     * Читаем данные из файлов, сводим в один мап, удаляем файлы
      */
-    public static Map<String, List<Integer>> readFiles(List<String> fileNames) {
+    static Map<String, List<Integer>> readFiles(List<String> fileNames) {
         Map<String, List<Integer>> outputDate = new HashMap<>();
         System.out.println("------");
         try {
@@ -86,57 +92,79 @@ public class Main {
         System.out.println("------");
         for (String key: outputDate.keySet())
             System.out.println(key + " " + outputDate.get(key));
+
+        for (String fileName : fileNames) {
+            File file = new File(fileName);
+            file.delete();
+        }
+
         return outputDate;
     }
 
     /**
-     * Метод processingResult(Map<String, List<Integer>> outputDate)
-     * Выводим три варианта итогового отчёта
+     * Метод generateReport1(Map<String, List<Integer>> outputDate)
+     * Формируем данные для итогового отчёта по варианту 1:
+     * JSON по тем меткам, которые есть в исходных данных: одна метка - итоговое количество
      */
-    public static void processingResult(Map<String, List<Integer>> outputDate) {
-        try {
-            System.out.println("------");
-            FileWriter writer = new FileWriter("src/main/resources/final_report_var1.json");
-            GsonBuilder builder = new GsonBuilder();
-            Gson gson = builder.serializeNulls().setPrettyPrinting().create();
-            Map<String, Integer> temp = new TreeMap<>();
-            for (String label : outputDate.keySet())
-                temp.put(label, outputDate.get(label).stream().mapToInt(i -> i).sum());
-            String json = gson.toJson(temp);
-            writer.write(json);
-            writer.flush();
-            System.out.println("В json файл записан отчёт по варианту 1");
+    static String generateReport1(Map<String, List<Integer>> outputDate) {
+        Gson gson = new GsonBuilder().setPrettyPrinting().create();
+        Map<String, Integer> temp = new TreeMap<>();
+        for (String label : outputDate.keySet())
+            temp.put(label, outputDate.get(label).stream().mapToInt(i -> i).sum());
+        return gson.toJson(temp);
+    }
 
-            writer = new FileWriter("src/main/resources/final_report_var2.json");
-            temp = new TreeMap<>();
-            for (Label value : Label.values())
-                if (outputDate.containsKey(value.toString()))
-                    temp.put(value.toString(),
-                            outputDate.get(value.toString()).stream().mapToInt(i -> i).sum());
-                else
-                    temp.put(value.toString(), null);
-            json = gson.toJson(temp);
-            writer.write(json);
-            writer.flush();
-            System.out.println("В json файл записан отчёт по варианту 2");
+    /**
+     * Метод generateReport2(Map<String, List<Integer>> outputDate)
+     * Формируем данные для итогового отчёта по варианту 2:
+     * Как первый JSON, но используется заранее подготовленный список меток, метки без
+     * количества - null
+     */
+    static String generateReport2(Map<String, List<Integer>> outputDate) {
+        GsonBuilder builder = new GsonBuilder();
+        Gson gson = builder.serializeNulls().setPrettyPrinting().create();
+        Map<String, Integer> temp = new TreeMap<>();
+        for (Label value : Label.values())
+            if (outputDate.containsKey(value.toString()))
+                temp.put(value.toString(),
+                        outputDate.get(value.toString()).stream().mapToInt(i -> i).sum());
+            else
+                temp.put(value.toString(), null);
+        return gson.toJson(temp);
+    }
 
-            writer = new FileWriter("src/main/resources/final_report_var3.json");
-
-            Map<String, Integer[]> newTemp = new TreeMap<>();
-            for (String label : outputDate.keySet()) {
-                int[] primArray = outputDate.get(label).stream().mapToInt(i -> i).toArray();
-                Integer[] objArray = Arrays.stream(primArray).boxed().toArray(Integer[]::new);
-                Arrays.sort(objArray, Collections.reverseOrder());
-                newTemp.put(label, objArray);
-            }
-            json = gson.toJson(newTemp);
-            writer.write(json);
-            writer.flush();
-            System.out.println("В json файл записан отчёт по варианту 3");
-
-            writer.close();
+    /**
+     * Метод generateReport3(Map<String, List<Integer>> outputDate)
+     * Формируем данные для итогового отчёта по варианту 3:
+     * JSON по тем меткам, которые есть в исходных данных: одна метка -
+     * массив всех значений, по убыванию
+     */
+    static String generateReport3(Map<String, List<Integer>> outputDate) {
+        Gson gson = new GsonBuilder().setPrettyPrinting().create();
+        Map<String, Integer[]> newTemp = new TreeMap<>();
+        for (String label : outputDate.keySet()) {
+            int[] primArray = outputDate.get(label).stream().mapToInt(i -> i).toArray();
+            Integer[] objArray = Arrays.stream(primArray).boxed().toArray(Integer[]::new);
+            Arrays.sort(objArray, Collections.reverseOrder());
+            newTemp.put(label, objArray);
         }
-        catch (Exception e) {
+        return gson.toJson(newTemp);
+    }
+
+    /**
+     * Метод saveResult
+     * Сохраняем файл
+     *
+     */
+    private static void saveResult(String finalReport, int reportVersion) {
+        try {
+            FileWriter writer = new FileWriter(
+                    "final_report_var" + reportVersion + ".json");
+            writer.write(finalReport);
+            writer.flush();
+            System.out.println("В json файл записан отчёт по варианту " + reportVersion);
+        }
+        catch (IOException e) {
             System.out.println(e.getMessage());
         }
     }
